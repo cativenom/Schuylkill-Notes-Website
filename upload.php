@@ -64,6 +64,13 @@
                         $tempname = $_FILES["uploadfile"]["tmp_name"];
 
                         $folder = "./Noteimages/" . $filename;
+                        
+                        $nsfw = new NSFW();
+
+                        $results = $nsfw->uploadFile($tempname,true);
+                        if(is_array($results))
+                            echo "Classification done. Image is {$results['classification']}".PHP_EOL;
+
 
                         $conn = mysqli_connect($serverName, $username, $password, $database, 3306);
                         if ($conn->connect_error) {
