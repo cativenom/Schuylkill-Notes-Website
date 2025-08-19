@@ -62,38 +62,134 @@
                         $theme = $_POST['theme'];
                         $filename = $_FILES["uploadfile"]["name"];
                         $tempname = $_FILES["uploadfile"]["tmp_name"];
-
+                        $imageApproved = 0;
                         $folder = "./Noteimages/" . $filename;
-                        
+                        $tempfolder = "./" . $filename;
+                    
+            
+                        echo "tempfolder: $tempfolder \n, folder $folder \n,tempname $tempname \n, filename $filename";   
+                        if (!move_uploaded_file($tempname, $tempfolder)) {echo "Image Error: Please contact us with a copy of the image uploaded";} 
                         $nsfw = new NSFW();
-
-                        $results = $nsfw->uploadFile($tempname,true);
-                        if(is_array($results))
-                            echo "Classification done. Image is {$results['classification']}".PHP_EOL;
-
-
+                        
+                        $results = $nsfw->uploadFile($filename,true);
+                        if(!is_array($results)) {exit("Image classification failied");}
+                        
+            
+                        if ($results['classification'] != "neutral") {
+                            unlink($filename);
+                            exit("Image contains nsfw imagery");
+                        }
+        
                         $conn = mysqli_connect($serverName, $username, $password, $database, 3306);
-                        if ($conn->connect_error) {
-                            die("Connection failed: " . $conn->connect_error);
-                        }
+                        if ($conn->connect_error) {die("Connection failed: " . $conn->connect_error);}
 
-                        $sql = "INSERT INTO mainNotes (firstLast, location, dateFound, store, container, theme, filename) VALUES (?, ?, ?, ?, ?, ?, ?)";
+                        $sql = "INSERT INTO mainNotes (firstLast, location, dateFound, store, container, theme, filename, imageApproved) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
                         $stmt = $conn->prepare($sql);
-                        $stmt->bind_param("sssssss", $firstLast, $location, $dateFound, $store, $container, $theme, $folder);
-                        if ($stmt->execute()) { 
-                            echo "New Note Created Succesfully";
-                        }
-                        else {
-                            echo "Upload Error Please contact me with a copy of the answers provided";
-                        }
+                        $stmt->bind_param("ssssssss", $firstLast, $location, $dateFound, $store, $container, $theme, $folder, $imageApproved);
+                        if (!$stmt->execute()) {echo "Upload Error Please contact me with a copy of the answers provided";}
 
-                        if (move_uploaded_file($tempname, $folder)) {
-                            echo "Image uploaded successfully!";
-                        } else {
-                            echo "Image Error: Please contact us with a copy of the image uploaded";
-                        }
+                        if (!rename($tempfolder, $folder)) {echo "Image Error: Please contact us with a copy of the image uploaded";} 
                         $conn->close();
-                        }
+                        echo "Note Created";
+                        
+                    }
+                        
+
+                        
+
+                        class NSFW
+                                    {
+                                        private $key;
+
+                                        function __construct($key = false)
+                                        {
+                                            $this->key = $key;
+                                        }
+
+                                        /**
+                                        * Uploads a file and returns the results as array
+                                        *
+                                        * @param string $path Path to file to be uploaded
+                                        * 
+                                        * @return array if the results are in
+                                        * @return false if there was an error
+                                        */ 
+                                        function uploadFile($path)
+                                        {
+                                            $request = curl_init('https://nsfw-categorize.it/api/upload');
+                                            curl_setopt($request, CURLOPT_POST, true);
+                                            curl_setopt(
+                                                $request,
+                                                CURLOPT_POSTFIELDS,
+                                                array(
+                                                    'image' => curl_file_create($path)
+                                                )
+                                            );
+
+                                            if($this->key!==false)
+                                                curl_setopt($request, CURLOPT_HTTPHEADER, array('NSFWKEY: '.$this->key));
+
+                                            curl_setopt($request, CURLOPT_RETURNTRANSFER, true);
+                                            $answer = json_decode(curl_exec($request), true);
+
+                                            curl_close($request);
+
+                                            if ($answer['status'] == 'OK')
+                                                return $answer['data'];
+                                            else return false;
+                                        }
+
+                                        /**
+                                        * Tells the API to download a remote file
+                                        * and returns the results as array
+                                        *
+                                        * @param string $url The URL to the image to be analyzed
+                                        * 
+                                        * @return array if the results are in
+                                        * @return false if there was an error
+                                        */ 
+                                        function uploadURL($url)
+                                        {
+                                            $request = curl_init('https://nsfw-categorize.it/api/upload?url='.$url);
+
+                                            if($this->key!==false)
+                                                curl_setopt($request, CURLOPT_HTTPHEADER, array('NSFWKEY: '.$this->key));
+
+                                            curl_setopt($request, CURLOPT_RETURNTRANSFER, true);
+                                            $answer = json_decode(curl_exec($request), true);
+                                            curl_close($request);
+
+                                            if ($answer['status'] == 'OK')
+                                                return $answer['data'];
+                                            else return false;
+                                        }
+
+                                        /**
+                                        * Checks if an image was already analyzed by cheking it's SHA1 hash
+                                        * This can be used without prior uploading of a file, just to check
+                                        * if a file you have on hand has been analyzed previously
+                                        *
+                                        * @param string $sha1 The SHA1 hash of a file
+                                        * 
+                                        * @return array if there are results
+                                        * @return false if there was an error
+                                        */ 
+                                        function checkSHA1($sha1)
+                                        {
+                                            $request = curl_init('https://nsfw-categorize.it/api/hash/'.$sha1);
+                                            if($this->key!==false)
+                                                curl_setopt($request, CURLOPT_HTTPHEADER, array('NSFWKEY: '.$this->key));
+                                            curl_setopt($request, CURLOPT_RETURNTRANSFER, true);
+                                            $answer = json_decode(curl_exec($request), true);
+                                            curl_close($request);
+
+                                            if ($answer['status'] == 'OK')
+                                                return $answer['data'];
+                                            else if($answer['status'] == 'PENDING')
+                                                return $answer['data']['hash'];
+                                            else return false;
+                                        }
+                                    }
                     ?>
                 </h2>
             </div>
@@ -103,3 +199,4 @@
 
 
 </html>
+
